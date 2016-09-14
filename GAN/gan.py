@@ -10,8 +10,10 @@ sys.path.append(os.environ['DATASETS_PATH'])
 from mnist.mnist import get_mnist
 
 from keras.models import Model
-from keras.layers import Input, Dense, Convolution2D, UpSampling2D, Flatten, Reshape, merge, BatchNormalization
+from keras.layers import Input, Dense, Dropout, Convolution2D, UpSampling2D, Flatten, Reshape, merge, BatchNormalization
 from keras.optimizers import Adam
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 ###########################################
 # Get MNIST Data
@@ -38,10 +40,11 @@ print "max(data)={}, min(data)={}".format(
 ###########################################
 NOISE_DIM = 100
 NBATCH = 25
-Nfilters = 8
+Nfilters = 32
 W = 3
-lrg = 1e-4
+lrg = 1e-3
 lrd = 1e-3
+p = 0.5
 
 adamg = Adam(lr=lrg)
 adamd = Adam(lr=lrd)
@@ -49,8 +52,12 @@ adamd = Adam(lr=lrd)
 #Generator
 z = Input(shape=(NOISE_DIM,))
 g = Dense(Npixels**2, activation='relu')(z)
+g = BatchNormalization(mode=2)(g)
 g = Reshape((Npixels,Npixels,1))(g)
 g = Convolution2D(Nfilters,W,W, activation='relu', border_mode='same')(g)
+g = BatchNormalization(mode=2)(g)
+g = Convolution2D(Nfilters,W,W, activation='linear', border_mode='same')(g)
+g = BatchNormalization(mode=2)(g)
 g = Convolution2D(1,W,W, activation='linear', border_mode='same')(g)
 
 Generator = Model(z,g)
@@ -59,11 +66,14 @@ Generator.compile(optimizer=adamg,loss='binary_crossentropy')
 #Discriminator
 x = Input(shape=(Npixels,Npixels,1))
 d = Convolution2D(Nfilters,W,W,activation='relu')(x)
-d = BatchNormalization(mode=2)(d)
+d = Dropout(p)(d)
+#d = BatchNormalization(mode=2)(d)
 d = Convolution2D(Nfilters,W,W,activation='relu')(d)
-d = BatchNormalization(mode=2)(d)
+#d = BatchNormalization(mode=2)(d)
+d = Dropout(p)(d)
 d = Convolution2D(Nfilters,W,W,activation='relu')(d)
-d = BatchNormalization(mode=2)(d)
+d = Dropout(p)(d)
+#d = BatchNormalization(mode=2)(d)
 d = Flatten()(d)
 d = Dense(2, activation='softmax')(d)
 
@@ -71,10 +81,11 @@ Discriminator = Model(x,d)
 Discriminator.compile(optimizer=adamd, loss='categorical_crossentropy', metrics=['accuracy'])
 
 #Adversarial classifier
-h = Generator(z)
+gen_input = Input(shape=(NOISE_DIM,))
+h = Generator(gen_input)
 out_fake = Discriminator(h)
 Discriminator.trainable = False
-Gen_classifier = Model(z,out_fake)
+Gen_classifier = Model(gen_input,out_fake)
 Gen_classifier.compile(optimizer=adamg, loss='categorical_crossentropy')
 
 ###########################################
@@ -103,19 +114,18 @@ print "x_pre.shape={}, x_gan.shape={}, X.shape={}, y.shape={}".format(
 )
 
 Discriminator.trainable = True
-Discriminator.fit(X,y,nb_epoch=1,batch_size=32)
+Discriminator.fit(X,y,nb_epoch=1,batch_size=100)
 
 #calculate accuracy
-def calculate_accuracy(X,y):
-    yhat = Discriminator.predict(X)
-    acc = np.mean(np.amax(yhat,axis=1) == np.amax(y,axis=1))
-    print "Discriminator accuracy={}".format(acc)
+def calculate_accuracy(model,X,y):
+    yhat = model.predict(X)
+    acc = np.mean(np.argmax(yhat,axis=1) == np.argmax(y,axis=1))
     return acc
 
-calculate_accuracy(X,y)
+#calculate_accuracy(X,y)
 
 #Adversarial training
-Niter = 100
+Niter = 1000
 
 Yd = np.zeros((2*NBATCH,2))
 Yd[:NBATCH,0]=1
@@ -124,9 +134,11 @@ Yd[NBATCH:,1]=1
 Yg = np.zeros((NBATCH,2))
 Yg[:,0]=1
 
-print_step = 10
-
-for i in range(0,Niter):
+losses = {}
+losses['g'] = []
+losses['d'] = []
+losses['d_gan'] = []
+for i in tqdm(range(0,Niter)):
     z_batch = np.random.rand(NBATCH,NOISE_DIM)
 
     x_gan = Generator.predict(z_batch,batch_size=NBATCH)
@@ -134,12 +146,37 @@ for i in range(0,Niter):
 
     X = np.vstack((x_batch,x_gan))
 
-    ld = Discriminator.train_on_batch(X,Yd)
+    ld = Discriminator.train_on_batch(x_batch,Yd[:NBATCH,:])
+    ld2 = Discriminator.train_on_batch(x_gan, Yd[NBATCH:,:])
+    #ld = Discriminator.train_on_batch(X,Yd)
+    losses['d'].append(ld[0])
+    #losses['d_gan'].append(ld2[0])
+
 
     z_batch = np.random.rand(NBATCH,NOISE_DIM)
     lg = Gen_classifier.train_on_batch(z_batch,Yg)
+    losses['g'].append(lg)
 
-    if (i % print_step) ==0:
-        print "Discriminator loss={}, Generator loss={}".format(ld, lg)
 
-calculate_accuracy(X,Yd)
+plt.plot(losses['d'], color='red', linewidth=2, label='discriminator')
+plt.plot(losses['g'], color='green', linewidth=2, label='generator')
+#plt.plot(losses['d_gan'], color='blue', linewidth=2, label='discriminator_gan')
+
+plt.legend()
+plt.plot()
+plt.show()
+
+def plot_gen(generator, noise_dim, n_ex=16, dim=(4,4), figsize=(10,10)):
+    noise = np.random.rand(n_ex,noise_dim)
+    generated_images = generator.predict(noise)
+
+    plt.figure(figsize=figsize)
+    for i in range(generated_images.shape[0]):
+        plt.subplot(dim[0],dim[1],i+1)
+        img = generated_images[i,:,:,0]
+        plt.imshow(img)
+        plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+plot_gen(Generator, NOISE_DIM)

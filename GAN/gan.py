@@ -43,8 +43,8 @@ NBATCH = 25
 Nfilters = 32
 W = 3
 lrg = 1e-3
-lrd = 1e-3
-p = 0.5
+lrd = 5e-4
+p = 0.25
 
 adamg = Adam(lr=lrg)
 adamd = Adam(lr=lrd)
@@ -56,7 +56,7 @@ g = BatchNormalization(mode=2)(g)
 g = Reshape((Npixels,Npixels,1))(g)
 g = Convolution2D(Nfilters,W,W, activation='relu', border_mode='same')(g)
 g = BatchNormalization(mode=2)(g)
-g = Convolution2D(Nfilters,W,W, activation='linear', border_mode='same')(g)
+g = Convolution2D(Nfilters/4,W,W, activation='linear', border_mode='same')(g)
 g = BatchNormalization(mode=2)(g)
 g = Convolution2D(1,W,W, activation='linear', border_mode='same')(g)
 
@@ -125,7 +125,7 @@ def calculate_accuracy(model,X,y):
 #calculate_accuracy(X,y)
 
 #Adversarial training
-Niter = 1000
+Niter = 500
 
 Yd = np.zeros((2*NBATCH,2))
 Yd[:NBATCH,0]=1
@@ -146,9 +146,9 @@ for i in tqdm(range(0,Niter)):
 
     X = np.vstack((x_batch,x_gan))
 
-    ld = Discriminator.train_on_batch(x_batch,Yd[:NBATCH,:])
-    ld2 = Discriminator.train_on_batch(x_gan, Yd[NBATCH:,:])
-    #ld = Discriminator.train_on_batch(X,Yd)
+    #ld = Discriminator.train_on_batch(x_batch,Yd[:NBATCH,:])
+    #ld2 = Discriminator.train_on_batch(x_gan, Yd[NBATCH:,:])
+    ld = Discriminator.train_on_batch(X,Yd)
     losses['d'].append(ld[0])
     #losses['d_gan'].append(ld2[0])
 

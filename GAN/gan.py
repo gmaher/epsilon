@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import os
 import sys
 sys.path.append(os.path.abspath("../.."))
-import tensorflow_util.util as util_tf
+#import tensorflow_util.util as util_tf
 
 sys.path.append(os.environ['DATASETS_PATH'])
 from mnist.mnist import get_mnist
 
 from keras.models import Model
 from keras.layers import Input, Dense, Dropout, Convolution2D, UpSampling2D, Flatten, Reshape, merge, BatchNormalization
+from keras.layers.advanced_activations import LeakyReLU
 from keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -39,13 +40,14 @@ print "max(data)={}, min(data)={}".format(
 # Set up Keras models
 ###########################################
 NOISE_DIM = 100
-NBATCH = 25
-Nfilters = 32
+NBATCH = 32
+GNfilters = 80
+DNfilters = 30
 W = 3
-lrg = 1e-3
-lrd = 5e-4
-p = 0.25
-
+lrg = 2e-4
+lrd = 3e-4
+p = 0.5
+leak = 0.2
 adamg = Adam(lr=lrg)
 adamd = Adam(lr=lrd)
 
@@ -54,26 +56,23 @@ z = Input(shape=(NOISE_DIM,))
 g = Dense(Npixels**2, activation='relu')(z)
 g = BatchNormalization(mode=2)(g)
 g = Reshape((Npixels,Npixels,1))(g)
-g = Convolution2D(Nfilters,W,W, activation='relu', border_mode='same')(g)
+g = Convolution2D(GNfilters,W,W, activation='relu', border_mode='same')(g)
 g = BatchNormalization(mode=2)(g)
-g = Convolution2D(Nfilters/4,W,W, activation='linear', border_mode='same')(g)
+g = Convolution2D(GNfilters/4,W,W, activation='relu', border_mode='same')(g)
 g = BatchNormalization(mode=2)(g)
-g = Convolution2D(1,W,W, activation='linear', border_mode='same')(g)
+g = Convolution2D(1,W,W, activation='sigmoid', border_mode='same')(g)
 
 Generator = Model(z,g)
 Generator.compile(optimizer=adamg,loss='binary_crossentropy')
 
 #Discriminator
 x = Input(shape=(Npixels,Npixels,1))
-d = Convolution2D(Nfilters,W,W,activation='relu')(x)
+d = Convolution2D(DNfilters,W,W,activation='linear')(x)
+d = LeakyReLU(leak)(d)
 d = Dropout(p)(d)
-#d = BatchNormalization(mode=2)(d)
-d = Convolution2D(Nfilters,W,W,activation='relu')(d)
-#d = BatchNormalization(mode=2)(d)
+d = Convolution2D(DNfilters/2,W,W,activation='linear')(d)
+d = LeakyReLU(leak)(d)
 d = Dropout(p)(d)
-d = Convolution2D(Nfilters,W,W,activation='relu')(d)
-d = Dropout(p)(d)
-#d = BatchNormalization(mode=2)(d)
 d = Flatten()(d)
 d = Dense(2, activation='softmax')(d)
 
@@ -125,7 +124,7 @@ def calculate_accuracy(model,X,y):
 #calculate_accuracy(X,y)
 
 #Adversarial training
-Niter = 500
+Niter = 1000000
 
 Yd = np.zeros((2*NBATCH,2))
 Yd[:NBATCH,0]=1
@@ -157,6 +156,10 @@ for i in tqdm(range(0,Niter)):
     lg = Gen_classifier.train_on_batch(z_batch,Yg)
     losses['g'].append(lg)
 
+print "saving models"
+Discriminator.save('Discriminator.h5')
+Generator.save('Generator.h5')
+Gen_classifier.save('Gen_classifier.h5')
 
 plt.plot(losses['d'], color='red', linewidth=2, label='discriminator')
 plt.plot(losses['g'], color='green', linewidth=2, label='generator')

@@ -16,6 +16,17 @@ from keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+def add_noise_to_model(model, eps=0.1):
+    weight_list = model.get_weights()
+    new_weights = []
+
+    for w in weight_list:
+        noise = np.random.randn(w.shape)*eps
+
+        new_weights.append(w+noise)
+
+    model.set_weights(new_weights)
+
 ###########################################
 # Get MNIST Data
 ###########################################
@@ -124,7 +135,7 @@ def calculate_accuracy(model,X,y):
 #calculate_accuracy(X,y)
 
 #Adversarial training
-Niter = 1000000
+Niter = 100
 
 Yd = np.zeros((2*NBATCH,2))
 Yd[:NBATCH,0]=1

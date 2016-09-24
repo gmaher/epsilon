@@ -6,22 +6,22 @@ sys.path.append("/home/gabriel/projects/tcl_code")
 
 from utility import *
 
-def adversarial_update(x,y,lr):
+def adversarial_update(x,y,lr,n):
     x = x - lr*y
     y = y - lr*(-x)
     return x,y
 
 def make_noise_update(noise=0.1):
-    def noise_update(x,y,lr):
-        x,y = adversarial_update(x,y,lr)
+    def noise_update(x,y,lr,n):
+        x,y = adversarial_update(x,y,lr,n)
         x = x + noise*np.random.randn()
         y = y + noise*np.random.randn()
         return x,y
     return noise_update
 
 def make_ascent_update(prob=0.1):
-    def ascent_update(x,y,lr):
-        xn,yn = adversarial_update(x,y,lr)
+    def ascent_update(x,y,lr,n):
+        xn,yn = adversarial_update(x,y,lr,n)
         dx = xn-x
         dy = yn-y
         px = np.random.rand()
@@ -39,8 +39,16 @@ def make_ascent_update(prob=0.1):
         return x,y
     return ascent_update
 
-#def make_random_move_update(prob=0.1, max_steps=5):
-#    def random_move_update(x,y,lr):
+def make_decay_noise_update(noise=0.1,decay=100):
+    def decay_noise_update(x,y,lr,n):
+        x,y = adversarial_update(x,y,lr,n)
+
+        d = float(decay)/(decay+n)
+        x = x + decay*noise*np.random.randn()
+        y = y + decay*noise*np.random.randn()
+        return x,y
+
+    return decay_noise_update
 
 
 def sim_game(n, update, lr=0.1):
@@ -53,7 +61,7 @@ def sim_game(n, update, lr=0.1):
     ys.append(y)
     for i in range(0,n):
 
-        x,y = update(x,y,lr)
+        x,y = update(x,y,lr,n)
 
         xs.append(x)
         ys.append(y)
@@ -62,6 +70,7 @@ def sim_game(n, update, lr=0.1):
 
 noise_update = make_noise_update(0.2)
 ascent_update = make_ascent_update(0.3)
+decay_noise_update = make_decay_noise_update(noise=0.001,decay=20)
 
 Ngames = 4
 steps = 1000
@@ -70,8 +79,9 @@ Ys = []
 leg = []
 for i in range(0,Ngames):
     #xl,yl = sim_game(steps, adversarial_update, lr=0.1)
-    xl,yl = sim_game(steps, noise_update, lr=0.1)
-    #xl,yl = sim_game(steps, ascent_update, lr=0.1)
+    #xl,yl = sim_game(steps, noise_update, lr=0.1)
+    xl,yl = sim_game(steps, ascent_update, lr=0.1)
+    #xl,yl = sim_game(steps, decay_noise_update, lr=0.1)
     Xs.append(xl)
     Ys.append(yl)
     leg.append(i)
